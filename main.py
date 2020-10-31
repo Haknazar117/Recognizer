@@ -1,70 +1,83 @@
 from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.button import Button
-from kivy.properties import StringProperty
-
+from kivy.clock import Clock
 from kivy.lang import Builder
+from kivy.uix.boxlayout import BoxLayout
 
-import speech_recognition as sr
-from android.permissions import request_permissions, Permission
-request_permissions([Permission.RECORD_AUDIO])
-
-r = sr.Recognizer()
-m = sr.Microphone()
+from plyer import stt
 
 Builder.load_string('''
-<Root>:
+#:import stt plyer.stt
+<SpeechInterface>:
     orientation: 'vertical'
-    RecordButton:
-        id: record_button
-        text: 'Record Speech'
-        on_release: self.record()
-        height: '50dp'
+    Label:
         size_hint_y: None
-
+        height: sp(40)
+        text: 'Is supported: %s' % stt.exist()
+    Label:
+        size_hint_y: None
+        height: sp(40)
+        text: 'Possible Matches'
     TextInput:
-        text: record_button.output
-        readonly: True
+        id: results
+        hint_text: 'results (auto stop)'
+    TextInput:
+        id: partial
+        hint_text: 'partial results (manual stop)'
+    TextInput:
+        id: errors
+        hint_text: 'errors'
+    Button:
+        id: start_button
+        text: 'Start Listening'
+        on_release: root.start_listening()
 ''')
 
 
-# Root Widget
-class Root(BoxLayout):
-    pass
+class SpeechInterface(BoxLayout):
+    '''Root Widget.'''
 
+    def start_listening(self):
+        if stt.listening:
+            self.stop_listening()
+            return
 
-class RecordButton(Button):
-    # String Property to Hold output for publishing by Textinput
-    output = StringProperty('')
+        start_button = self.ids.start_button
+        start_button.text = 'Stop'
 
-    def record(self):
-        # GUI Blocking Audio Capture
-        with m as source:
-            audio = r.listen(source)
+        self.ids.results.text = ''
+        self.ids.partial.text = ''
 
-        try:
-            # recognize speech using Google Speech Recognition
-            value = r.recognize_google(audio)
-            self.output = "You said \"{}\"".format(value)
+        stt.start()
 
-        except sr.UnknownValueError:
-            self.output = ("Oops! Didn't catch that")
+        Clock.schedule_interval(self.check_state, 1 / 5)
 
-        except sr.RequestError as e:
-            self.output = ("Uh oh! Couldn't request results from Google Speech Recognition service; {0}".format(e))
+    def stop_listening(self):
+        start_button = self.ids.start_button
+        start_button.text = 'Start Listening'
+
+        stt.stop()
+        self.update()
+
+        Clock.unschedule(self.check_state)
+
+    def check_state(self, dt):
+        # if the recognizer service stops, change UI
+        if not stt.listening:
+            self.stop_listening()
+
+    def update(self):
+        self.ids.partial.text = '\n'.join(stt.partial_results)
+        self.ids.results.text = '\n'.join(stt.results)
 
 
 class SpeechApp(App):
+
     def build(self):
-        # Calibrate the Microphone to Silent Levels
-        print("A moment of silence, please...")
-        with m as source:
-            r.adjust_for_ambient_noise(source)
-            print("Set minimum energy threshold to {}".format(r.energy_threshold))
-        # Create a root widget object and return as root
-        return Root()
+        return SpeechInterface()
+
+    def on_pause(self):
+        return True
 
 
-# When Executed from the command line (not imported as module), create a new SpeechApp
-if __name__ == '__main__':
+if __name__ == "__main__":
     SpeechApp().run()
