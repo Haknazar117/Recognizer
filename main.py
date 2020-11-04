@@ -1,97 +1,69 @@
-from kivy.app import App
-from kivy.uix.boxlayout import BoxLayout
-from kivy.properties import NumericProperty, ObjectProperty
-from kivy.clock import Clock
-from jnius import autoclass
-from audiostream import get_input
+import time
 import wave
-#
-import os
- 
- 
- 
-if not os.path.isdir("/sdcard/kivyrecords/"):
-    os.mkdir("/sdcard/kivyrecords/")
- 
-PATH = "/sdcard/kivyrecords/rec_test.wav"
- 
-recordtime = 5
-samples_per_second = 60
- 
- 
-class RootScreen(BoxLayout): #
-    pass
- 
- 
-class RecordForm(BoxLayout): #
-    b_record = ObjectProperty()
-    p_bar = ObjectProperty()
- 
-    def start_record(self):
-        self.b_record.disabled = True
-        self.p_bar.max = recordtime
-        REC.start()
-        Clock.schedule_once(self.stop_record, recordtime)
-        Clock.schedule_interval(self.update_display, 1/30.)
- 
-    def stop_record(self, dt):
-        Clock.unschedule(self.update_display)
-        self.p_bar.value = 0
-        REC.stop()
-        self.b_record.disabled = False
- 
-    def update_display(self,dt):
-        self.p_bar.value = self.p_bar.value + dt
- 
- 
-class Recorder(object):
-    def __init__(self):
-        # get the needed Java classes
-        self.MediaRecorder = autoclass('android.media.MediaRecorder')
-        self.AudioSource = autoclass('android.media.MediaRecorder$AudioSource')
-        self.AudioFormat = autoclass('android.media.AudioFormat')
-        self.AudioRecord = autoclass('android.media.AudioRecord')
-    # define our system
-        self.SampleRate = 44100
-        self.ChannelConfig = self.AudioFormat.CHANNEL_IN_MONO
-        self.AudioEncoding = self.AudioFormat.ENCODING_PCM_16BIT
-        self.BufferSize = self.AudioRecord.getMinBufferSize(self.SampleRate, self.ChannelConfig, self.AudioEncoding)
-        self.outstream = self.FileOutputStream(PATH)
-        self.sData = []
-        self.mic = get_input(callback=self.mic_callback, source='mic', buffersize=self.BufferSize)
- 
+import speech_recognition as sr
+from audiostream import get_input
+
+from kivy.app import App
+from kivy.lang import Builder
+from kivy.uix.boxlayout import BoxLayout
+
+r = sr.Recognizer()
+
+Builder.load_string('''
+<Recorder>:
+    orientation: 'vertical'
+    Label:
+        id: text
+    Button:
+        id: record
+        text: "Record"
+        on_release: root.record_audio()
+
+''')
+
+
+class Recorder(BoxLayout):
+    frames = []
+
     def mic_callback(self, buf):
-        self.sData.append(buf)
-        print ('got : ' + str(len(buf)))
- 
- 
-    def start(self):
-        self.mic.start()
-        Clock.schedule_interval(self.readbuffer, 1/samples_per_second)
- 
-    def readbuffer(self, dt):
-        self.mic.poll()
- 
-    def dummy(self, dt):
-        print ("dummy")
- 
-    def stop(self):
-        Clock.schedule_once(self.dummy, 0.5)
-        Clock.unschedule(self.readbuffer)
-        self.mic.stop()
-        wf = wave.open(PATH, 'wb')
-        wf.setnchannels(self.mic.channels)
+        print('got', len(buf))
+        self.frames.append(buf)
+
+    def record_audio(self):
+        microphone = get_input(callback=self.mic_callback)
+        microphone.start()
+
+        time.sleep(5)
+
+        microphone.stop()
+
+        wf = wave.open("test.wav", 'wb')
+        wf.setnchannels(microphone.channels)
         wf.setsampwidth(2)
-        wf.setframerate(self.mic.rate)
-        wf.writeframes(b''.join(self.sData))
+        wf.setframerate(microphone.rate)
+        wf.writeframes(b''.join(self.frames))
         wf.close()
- 
-REC = Recorder()
- 
+        self.recognize()
+
+    def recognize(self):
+        with sr.AudioFile("test.wav") as source:
+            audio = r.listen(source)
+
+        try:
+            # recognize speech using Google Speech Recognition
+            value = r.recognize_google(audio)
+            self.ids["text"].text = str(value)
+
+        except sr.UnknownValueError:
+            self.ids["text"].text = "Oops! Didn't catch that"
+
+        except sr.RequestError as e:
+            self.ids["text"].text = "Couldn't request results from Google Speech Recognition service; {0}".format(e)
+
+
 class RecordApp(App):
- 
     def build(self):
-        self.title = 'Recording Application'
- 
-if __name__ == '__main__':
-    RecordApp().run()
+        return Recorder()
+
+
+RecordApp().run()
