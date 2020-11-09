@@ -1,63 +1,43 @@
-import time
-import speech_recognition as sr
-from jnius import autoclass
-
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.uix.boxlayout import BoxLayout
-
-r = sr.Recognizer()
+from kivy.properties import StringProperty
+from plyer import audio
+from time import sleep
+from google_speech import transcribe_file
 
 Builder.load_string('''
-<Recorder>:
+<RecordRecognize>:
     orientation: 'vertical'
+    spacing: 10
+    padding: 10
     Label:
-        id: text
+        text: root.text
+    
     Button:
-        id: record
-        text: "Record"
-        on_release: root.record_audio()
+        id: rec
+        text: Record
+        on_release: root.record()
 
 ''')
 
 
-class Recorder(BoxLayout):
-    MediaRecorder = autoclass('android.media.MediaRecorder')
-    AudioSource = autoclass('android.media.MediaRecorder$AudioSource')
-    OutputFormat = autoclass('android.media.MediaRecorder$OutputFormat')
-    AudioEncoder = autoclass('android.media.MediaRecorder$AudioEncoder')
-    
-    def listen(self):
-        mRecorder = self.MediaRecorder()
-        mRecorder.setAudioSource(AudioSource.MIC)
-        mRecorder.setOutputFormat(OutputFormat.THREE_GP)
-        mRecorder.setOutputFile('/sdcard/testrecorder.3gp')
-        mRecorder.setAudioEncoder(AudioEncoder.AMR_NB)
-        mRecorder.prepare()
-        
-        mRecorder.start()
-        time.sleep(5)
-        mRecorder.stop()
-    
+class RecordRecognize(BoxLayout):
+    text = StringProperty('')
+
+    def record(self):
+        audio.start()
+        sleep(6)
+        audio.stop()
+        self.recognize()
+
     def recognize(self):
-        with sr.AudioFile("/sdcard/testrecorder.3gp") as source:
-            audio = r.listen(source)
-
-        try:
-            # recognize speech using Google Speech Recognition
-            value = r.recognize_google(audio)
-            self.ids["text"].text = str(value)
-
-        except sr.UnknownValueError:
-            self.ids["text"].text = "Oops! Didn't catch that"
-
-        except sr.RequestError as e:
-            self.ids["text"].text = "Couldn't request results from Google Speech Recognition service; {0}".format(e)
+        self.text = transcribe_file('/sdcard/testrecorder.3gp')
 
 
-class RecordApp(App):
+class RecApp(App):
     def build(self):
-        return Recorder()
+        return RecordRecognize()
 
 
-RecordApp().run()
+RecApp().run()
